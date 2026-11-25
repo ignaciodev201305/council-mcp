@@ -1,0 +1,21 @@
+# Entorno de Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Secretos: solo se versiona la plantilla
+.env
+.env.*
+!.env.example
+
+# Datos locales (memoria de sesiones)
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

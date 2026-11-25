@@ -1,0 +1,49 @@
+# Configuración del consejo. Los modelos son IDs de OpenRouter (https://openrouter.ai/models).
+# Stack por defecto: miembros baratos y rápidos, y un supervisor más capaz, porque la síntesis es lo que
+# más define la calidad del veredicto. Costo aproximado: 2 centavos de dólar por consulta.
+
+# Prompt común a todos los miembros; se antepone al prompt de cada lente.
+member_base_prompt: prompts/members/_base.md
+
+# Mínimo de miembros que deben responder para sintetizar.
+quorum: 3
+
+# Modelo barato que resume la memoria de cada agente cuando la conversación crece.
+summarizer_model: anthropic/claude-haiku-5.5
+
+supervisor:
+  model: openai/gpt-6.1-terra
+  temperature: 0.2
+  prompt: prompts/supervisor.md
+  memory_window: 4   # mensajes recientes que se conservan sin resumir (mínimo 2)
+  # Salida estructurada nativa del proveedor; algunos modelos (p. ej. Claude Sonnet 5.5) rechazan tool_choice forzado.
+  structured_output: native
+
+members:
+  - name: tecnico
+    model: anthropic/claude-haiku-5.5
+    temperature: 0.3
+    prompt: prompts/members/tecnico.md
+    tools: [package_info]
+    memory_window: 2
+
+  - name: producto
+    model: openai/gpt-6-luna
+    temperature: 0.5
+    prompt: prompts/members/producto.md
+    tools: []
+    memory_window: 2
+
+  - name: riesgos
+    model: deepseek/deepseek-v4.1-flash-1017
+    temperature: 0.3
+    prompt: prompts/members/riesgos.md
+    tools: [package_info]
+    memory_window: 2
+
+  - name: constructor
+    model: anthropic/claude-haiku-5.5
+    temperature: 0.6
+    prompt: prompts/members/constructor.md
+    tools: []
+    memory_window: 2
