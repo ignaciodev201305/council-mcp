@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import SummarizationMiddleware
+from langchain.agents.middleware import ModelCallLimitMiddleware, SummarizationMiddleware
 from langchain.agents.structured_output import ProviderStrategy, ToolStrategy
 from langchain.chat_models import init_chat_model
 from langchain_core.callbacks import AsyncCallbackHandler
@@ -17,6 +17,8 @@ from council.settings import Settings, read_prompt
 from council.tools import TOOLS
 
 ModelFactory = Callable[[str, float], BaseChatModel]
+
+_MAX_MODEL_CALLS_PER_RUN = 4
 
 
 class CostTracker(AsyncCallbackHandler):
@@ -48,6 +50,8 @@ def openrouter_model_factory(settings: Settings) -> ModelFactory:
             use_responses_api=False,
             timeout=settings.council_model_timeout_s,
             max_retries=2,
+            # Sin tope OpenRouter reserva crédito para el máximo del modelo (p. ej. 65k tokens) y responde 402 con saldo bajo.
+            max_tokens=settings.council_max_output_tokens,
             # Sin esto OpenRouter puede rutear a un proveedor lento; la latencia del mismo modelo variaba 16-130 s.
             extra_body={"provider": {"sort": "throughput"}},
         )
@@ -71,13 +75,15 @@ def _build_agent(
         trigger=("tokens", settings.council_summary_trigger_tokens),
         keep=("messages", cfg.memory_window),
     )
+    # ToolStrategy reintenta los errores de schema sin contador; el tope evita que un modelo que nunca cumple repita hasta el timeout.
+    call_limit = ModelCallLimitMiddleware(run_limit=_MAX_MODEL_CALLS_PER_RUN, exit_behavior="error")
     # checkpointer=True guarda la memoria del agente en el hilo de la sesión, bajo su propio namespace.
     return create_agent(
         make_model(cfg.model, cfg.temperature),
         tools=tools,
         system_prompt=system_prompt,
         response_format=ToolStrategy(schema) if cfg.structured_output == "tool" else ProviderStrategy(schema),
-        middleware=[summarizer],
+        middleware=[summarizer, call_limit],
         checkpointer=True,
         name=name,
     )

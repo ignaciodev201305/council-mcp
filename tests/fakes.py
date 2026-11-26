@@ -67,6 +67,25 @@ class FakeToolModel(BaseChatModel):
         return self._generate(messages, stop, run_manager, **kwargs)
 
 
+class FakeTextModel(BaseChatModel):
+    """Modelo que responde con texto plano, uno por llamada; repite el último al agotarse."""
+
+    replies: list[str]
+    calls: list[list[BaseMessage]] = Field(default_factory=list)
+
+    @property
+    def _llm_type(self) -> str:
+        return "fake-text"
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "FakeTextModel":
+        return self
+
+    def _generate(self, messages: list[BaseMessage], stop: Any = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
+        self.calls.append(list(messages))
+        reply = self.replies[min(len(self.calls), len(self.replies)) - 1]
+        return ChatResult(generations=[ChatGeneration(message=AIMessage(content=reply))])
+
+
 def fake_config(failing: set[str] | None = None, quorum: int = 3) -> tuple[CouncilConfig, dict[str, FakeToolModel], Callable[[str, float], FakeToolModel]]:
     """Devuelve una configuración de 4 miembros, sus modelos falsos y la factory que los entrega."""
     failing = failing or set()

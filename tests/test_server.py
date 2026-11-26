@@ -10,12 +10,20 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from mcp.server.mcpserver.exceptions import ToolError
 from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
 from starlette.testclient import TestClient
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from council.server import BearerAuthMiddleware, Council
 from council.settings import Settings
 from tests.fakes import REPORT
+
+
+class _FailingGraph:
+    """Grafo falso que falla con un error no previsto, como una base de datos caída."""
+
+    async def ainvoke(self, payload: dict, config: dict) -> dict:
+        raise RuntimeError("x")
 
 
 class _StubGraph:
@@ -103,10 +111,29 @@ class CouncilTest(unittest.IsolatedAsyncioTestCase):
             await council.consult("idea", "", None)
         self.assertIn("Presupuesto diario agotado", str(ctx.exception))
 
+    async def test_unexpected_error_gets_neutral_message(self):
+        council = Council(_FailingGraph(), self.saver, Settings())
+        await council.setup()
+        with self.assertRaises(ToolError) as ctx:
+            await council.consult("idea", "", None)
+        self.assertIn("La consulta falló", str(ctx.exception))
+        self.assertNotIn("supervisor", str(ctx.exception))
+
+
+async def _websocket_endpoint(websocket: WebSocket) -> None:
+    """Acepta el websocket y lo cierra: sin el middleware, la conexión sería exitosa."""
+    await websocket.accept()
+    await websocket.close()
+
 
 class BearerAuthTest(unittest.TestCase):
     def setUp(self):
-        app = Starlette(routes=[Route("/mcp", lambda r: PlainTextResponse("ok"))])
+        app = Starlette(
+            routes=[
+                Route("/mcp", lambda r: PlainTextResponse("ok")),
+                WebSocketRoute("/mcp", _websocket_endpoint),
+            ]
+        )
         self.client = TestClient(BearerAuthMiddleware(app, "token-de-prueba-123"))
 
     def test_rejects_missing_or_wrong_token(self):
@@ -116,6 +143,11 @@ class BearerAuthTest(unittest.TestCase):
     def test_accepts_valid_token(self):
         response = self.client.get("/mcp", headers={"Authorization": "Bearer token-de-prueba-123"})
         self.assertEqual(response.status_code, 200)
+
+    def test_rejects_websocket_without_token(self):
+        with self.assertRaises(WebSocketDisconnect):
+            with self.client.websocket_connect("/mcp"):
+                pass
 
 
 if __name__ == "__main__":

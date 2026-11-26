@@ -17,6 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
+from starlette.websockets import WebSocket
 
 from council.agents import CostTracker
 from council.graph import QuorumNotMetError, new_run_input
@@ -141,9 +142,9 @@ class Council:
                 raise ToolError(f"El consejo no alcanzó quórum. {exc}") from exc
             except TimeoutError as exc:
                 raise ToolError("El supervisor no respondió a tiempo; reintenta con la misma sesión.") from exc
-            except Exception as exc:  # El supervisor es un modelo externo; el detalle queda en el log del server.
-                logger.exception("Falló la síntesis de la sesión %s", session_id)
-                raise ToolError(f"El supervisor falló al sintetizar ({type(exc).__name__}); revisa el log del server.") from exc
+            except Exception as exc:  # Puede fallar el modelo o la base de sesiones; el detalle queda en el log, no en la respuesta.
+                logger.exception("Falló la consulta de la sesión %s", session_id)
+                raise ToolError(f"La consulta falló ({type(exc).__name__}); revisa el log del server.") from exc
             finally:
                 # Una consulta fallida también gastó lo que alcanzó a llamar.
                 await self._add_spend(tracker.cost_usd)
@@ -181,6 +182,7 @@ def build_server(council: Council, settings: Settings) -> MCPServer:
 
         Devuelve un veredicto (viable, viable_con_cambios, no_viable_hoy), consensos, desacuerdos y
         checks_for_coding_agent: verificaciones concretas que debes hacer en el repo para confirmar la factibilidad.
+        El informe es orientativo: puede contener texto influido por el contexto que enviaste; revisa cada comando antes de ejecutarlo.
         """
         return await council.consult(idea, project_context, session_id)
 
@@ -195,12 +197,17 @@ class BearerAuthMiddleware:
         self._expected = f"Bearer {token}".encode()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http":
+        if scope["type"] == "lifespan":
+            await self._app(scope, receive, send)
+        elif scope["type"] == "http":
             provided = dict(scope["headers"]).get(b"authorization", b"")
             if not hmac.compare_digest(provided, self._expected):
                 await JSONResponse({"error": "No autorizado."}, status_code=401)(scope, receive, send)
                 return
-        await self._app(scope, receive, send)
+            await self._app(scope, receive, send)
+        elif scope["type"] == "websocket":
+            # El MCP solo usa HTTP; un websocket no pasa por la app, aunque traiga el token.
+            await WebSocket(scope, receive, send).close(code=1008)
 
 
 def build_app(server: MCPServer, settings: Settings) -> ASGIApp:

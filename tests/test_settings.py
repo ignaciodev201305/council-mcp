@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from council.schemas import CouncilConfig
-from council.settings import ROOT, _read_env_file, load_council_config, read_prompt
+from council.settings import ROOT, Settings, _read_env_file, load_council_config, read_prompt
 
 _BASE = {
     "member_base_prompt": "prompts/members/_base.md",
@@ -74,6 +74,13 @@ class EnvFileTest(unittest.TestCase):
 
     def test_missing_file_is_empty(self):
         self.assertEqual(_read_env_file(Path("no-existe.env")), {})
+
+
+class SettingsTest(unittest.TestCase):
+    def test_max_output_tokens_default_and_minimum(self):
+        self.assertEqual(Settings().council_max_output_tokens, 8000)
+        with self.assertRaises(ValidationError):
+            Settings(council_max_output_tokens=500)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,7 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import Annotated, TypedDict
 
+from langchain.agents.structured_output import StructuredOutputValidationError
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.graph import END, START, StateGraph
@@ -95,9 +96,13 @@ def _synthesize_node(
                 f"Respondieron {len(state['reviews'])} miembros y el quórum es {quorum}. "
                 f"Fallaron: {', '.join(state['failed']) or 'ninguno'}."
             )
-        result = await asyncio.wait_for(
-            supervisor.ainvoke({"messages": [HumanMessage(_supervisor_message(state))]}), timeout_s
-        )
+        payload = {"messages": [HumanMessage(_supervisor_message(state))]}
+        try:
+            result = await asyncio.wait_for(supervisor.ainvoke(payload), timeout_s)
+        except StructuredOutputValidationError:
+            # Un intento fallido no queda en el historial del supervisor, así que se reenvía el mismo mensaje.
+            logger.warning("El supervisor devolvió un reporte inválido; se reintenta una vez.")
+            result = await asyncio.wait_for(supervisor.ainvoke(payload), timeout_s)
         return {"report": result["structured_response"].model_dump()}
 
     return run

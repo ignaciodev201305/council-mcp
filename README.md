@@ -124,15 +124,24 @@ Consulta PyPI o npm: si el paquete existe, su última versión, la fecha y la li
 | `COUNCIL_SESSION_TTL_DAYS` | `30` | Días sin uso antes de borrar una sesión |
 | `COUNCIL_MEMBER_TIMEOUT_S` | `180` | Tiempo máximo por miembro y para el supervisor |
 | `COUNCIL_MODEL_TIMEOUT_S` | `120` | Timeout de cada llamada al modelo |
+| `COUNCIL_MAX_OUTPUT_TOKENS` | `8000` | Tope de tokens de salida por llamada; sin él, OpenRouter reserva crédito para el máximo del modelo y rechaza con saldo bajo |
 | `COUNCIL_SUMMARY_TRIGGER_TOKENS` | `6000` | Tokens de memoria a partir de los cuales se resume |
 | `COUNCIL_MAX_IDEA_CHARS` / `COUNCIL_MAX_CONTEXT_CHARS` | `8000` / `30000` | Topes de tamaño de la entrada |
-| `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` | (apagado) | Trazas en LangSmith |
+| `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_AGENT_ID` / `LANGSMITH_AGENT_ENVIRONMENT` | (apagado) | Trazas en LangSmith |
 
 ## Seguridad
 
 - Escucha solo en localhost, exige token y trae protección contra DNS rebinding.
 - Dos consultas a la misma sesión se ejecutan una después de la otra; distintas sesiones corren en paralelo hasta `COUNCIL_MAX_CONCURRENT`.
 - La idea y el contexto llegan a los modelos delimitados como datos, y se les indica que no sigan instrucciones que vengan dentro.
+- El reporte es consultivo: `checks_for_coding_agent` solo pide verificaciones de lectura. El agente de coding debe revisar cualquier comando antes de ejecutarlo, porque el contexto que mandó puede traer texto malicioso.
+- Cada agente hace como máximo un número fijo de llamadas al modelo por consulta, así que un modelo que no logra cumplir el formato no repite indefinidamente.
+
+### Dónde quedan tus datos
+
+- La idea y el contexto de cada consulta se guardan completos en `data/council.db`, en tu máquina, hasta que la sesión pasa `COUNCIL_SESSION_TTL_DAYS` días sin uso.
+- Se mandan a OpenRouter para que los modelos los evalúen y, si `LANGSMITH_TRACING` está activo, quedan en las trazas de LangSmith.
+- No mandes claves, tokens ni datos personales dentro de `project_context`.
 
 ## Tests
 
