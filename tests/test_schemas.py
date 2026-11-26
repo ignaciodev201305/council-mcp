@@ -4,8 +4,8 @@ import unittest
 
 from pydantic import ValidationError
 
-from council.schemas import MemberReview
-from tests.fakes import REVIEW
+from council.schemas import CouncilReport, MemberReview
+from tests.fakes import REPORT, REVIEW
 
 
 class MemberReviewTest(unittest.TestCase):
@@ -22,6 +22,14 @@ class MemberReviewTest(unittest.TestCase):
     def test_requires_two_weaknesses(self):
         with self.assertRaises(ValidationError):
             MemberReview.model_validate({**REVIEW, "weaknesses": REVIEW["weaknesses"][:1]})
+
+
+class CouncilReportTest(unittest.TestCase):
+    def test_accepts_report_without_checks(self):
+        report = CouncilReport.model_validate({**REPORT, "checks_for_coding_agent": []})
+        self.assertEqual(report.checks_for_coding_agent, [])
+        without_field = {k: v for k, v in REPORT.items() if k != "checks_for_coding_agent"}
+        self.assertEqual(CouncilReport.model_validate(without_field).checks_for_coding_agent, [])
 
 
 if __name__ == "__main__":

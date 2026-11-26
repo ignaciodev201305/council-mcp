@@ -14,9 +14,39 @@ from starlette.routing import Route, WebSocketRoute
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from council.server import BearerAuthMiddleware, Council
+from council.server import _MAX_KEY_FINDINGS, _MAX_KEY_FINDINGS_PER_MEMBER, BearerAuthMiddleware, Council, collect_key_findings
 from council.settings import Settings
 from tests.fakes import REPORT
+
+
+def _point(text: str, severity: str, basis: str = "contexto") -> dict:
+    return {"text": text, "severity": severity, "basis": basis}
+
+
+class KeyFindingsTest(unittest.TestCase):
+    def test_keeps_only_high_severity_with_member_and_kind(self):
+        reviews = {
+            "riesgos": {"weaknesses": [_point("folios offline", "alta"), _point("detalle", "baja")],
+                        "risks": [_point("fuga entre empresas", "alta", "supuesto")]},
+            "producto": {"weaknesses": [_point("facturador gratuito del SII", "alta")], "risks": []},
+        }
+        findings = collect_key_findings(reviews)
+        texts = [f.text for f in findings]
+        self.assertEqual(len(findings), 3)
+        self.assertNotIn("detalle", texts)
+        # Dentro de cada miembro se respeta su orden: debilidades y después riesgos.
+        riesgos = [f for f in findings if f.member == "riesgos"]
+        self.assertEqual([f.text for f in riesgos], ["folios offline", "fuga entre empresas"])
+        self.assertEqual(riesgos[-1].kind, "risk")
+
+    def test_round_robin_keeps_each_member_represented(self):
+        reviews = {name: {"weaknesses": [_point(f"{name}{i}", "alta") for i in range(10)], "risks": []}
+                   for name in ("a", "b", "c", "d", "e")}
+        findings = collect_key_findings(reviews)
+        self.assertEqual(len(findings), _MAX_KEY_FINDINGS)
+        # Cada miembro aporta antes de que alguno repita, y nadie pasa el tope por miembro.
+        self.assertEqual({f.member for f in findings[:5]}, {"a", "b", "c", "d", "e"})
+        self.assertTrue(all(sum(f.member == m for f in findings) <= _MAX_KEY_FINDINGS_PER_MEMBER for m in "abcde"))
 
 
 class _FailingGraph:

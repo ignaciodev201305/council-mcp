@@ -1,6 +1,6 @@
 # Configuración del consejo. Los modelos son IDs de OpenRouter (https://openrouter.ai/models).
-# Stack por defecto: miembros baratos y rápidos, y un supervisor más capaz, porque la síntesis es lo que
-# más define la calidad del veredicto. Costo aproximado: 2 centavos de dólar por consulta.
+# Stack por defecto: solo modelos baratos (Haiku, Luna, DeepSeek flash). Costo aproximado: 1 a 2 centavos
+# de dólar por consulta, incluida la búsqueda web de producto.
 
 # Prompt común a todos los miembros; se antepone al prompt de cada lente.
 member_base_prompt: prompts/members/_base.md
@@ -12,12 +12,12 @@ quorum: 3
 summarizer_model: anthropic/claude-haiku-5.5
 
 supervisor:
-  model: openai/gpt-6.1-terra
+  model: openai/gpt-6-luna
   temperature: 0.2
   prompt: prompts/supervisor.md
   memory_window: 4   # mensajes recientes que se conservan sin resumir (mínimo 2)
-  # Salida estructurada nativa del proveedor; algunos modelos (p. ej. Claude Sonnet 5.5) rechazan tool_choice forzado.
-  structured_output: native
+  # "tool" reintenta si el reporte no valida; con "native" un reporte inválido tumbaba la consulta con Luna.
+  structured_output: tool
 
 members:
   - name: tecnico
@@ -26,6 +26,8 @@ members:
     prompt: prompts/members/tecnico.md
     tools: [package_info]
     memory_window: 2
+    # Haiku a veces arma mal los argumentos del tool de salida (listas como texto); la salida nativa lo evita.
+    structured_output: native
 
   - name: producto
     model: openai/gpt-6-luna
@@ -33,6 +35,8 @@ members:
     prompt: prompts/members/producto.md
     tools: []
     memory_window: 2
+    # Busca competidores y alternativas actuales en la web (unos 0,007 USD más por llamada).
+    web_search: true
 
   - name: riesgos
     model: deepseek/deepseek-v4.1-flash-1017
@@ -47,3 +51,4 @@ members:
     prompt: prompts/members/constructor.md
     tools: []
     memory_window: 2
+    structured_output: native

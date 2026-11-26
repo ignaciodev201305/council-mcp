@@ -64,14 +64,15 @@ Cualquier otro cliente MCP con soporte HTTP se conecta igual: URL más header.
 
 | Tool | Parámetros | Devuelve |
 |---|---|---|
-| `consult_council` | `idea` (obligatorio), `project_context`, `session_id` | `session_id`, `report`, `members_responded`, `members_failed`, `cost_usd` |
+| `consult_council` | `idea` (obligatorio), `project_context`, `session_id` | `session_id`, `report`, `key_findings`, `members_responded`, `members_failed`, `cost_usd` |
 
 - Primera consulta: sin `session_id`. La respuesta trae uno nuevo.
 - Seguimiento: el mismo `session_id` más la información nueva en `idea` (respuestas a `open_questions`, o lo que encontraste en el código). Cada miembro recuerda su evaluación anterior y dice qué cambió.
 - `report.verdict`: `viable`, `viable_con_cambios` o `no_viable_hoy`.
-- `report.checks_for_coding_agent`: verificaciones concretas para hacer en el repo.
+- `report.checks_for_coding_agent`: verificaciones concretas para hacer en el repo. Puede venir vacío si la idea no tiene código que revisar.
+- `key_findings`: las debilidades y riesgos de severidad alta de cada miembro, copiados tal cual en código, sin pasar por la síntesis (como máximo 12, repartidos por turnos entre miembros, hasta 3 por miembro). Así ningún hallazgo grave se pierde al resumir.
 - Si responden menos miembros que el `quorum`, el tool devuelve error.
-- `cost_usd` es el costo real de la consulta según OpenRouter. Con el stack por defecto ronda los 2 centavos.
+- `cost_usd` es el costo real de la consulta según OpenRouter. Con el stack por defecto (solo modelos baratos) ronda los 1 a 2 centavos, incluida la búsqueda web de `producto`.
 
 ## Costo y presupuesto
 
@@ -91,6 +92,7 @@ Todo el comportamiento vive en `council.yaml` y `prompts/`; no hace falta tocar 
 | `temperature` | Temperatura del modelo (0 a 2) |
 | `prompt` | Ruta al `.md` con la lente (dentro de `prompts/`) |
 | `tools` | Tools del miembro; por ahora solo `package_info` |
+| `web_search` | `true` activa la búsqueda web integrada de OpenRouter (motor Exa, unos 0,007 USD por llamada). Por defecto la tiene solo `producto`, para encontrar competidores y alternativas reales |
 | `memory_window` | Mensajes recientes que se conservan sin resumir (mínimo 2) |
 | `structured_output` | `tool` (default: reintenta si la salida no valida) o `native` (salida estructurada del proveedor; necesaria para modelos que rechazan `tool_choice` forzado, como Claude Sonnet 5.5) |
 | `member_base_prompt` | Prompt común a todos los miembros |

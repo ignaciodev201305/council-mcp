@@ -16,9 +16,12 @@ from council.schemas import AgentConfig, CouncilConfig, CouncilReport, MemberCon
 from council.settings import Settings, read_prompt
 from council.tools import TOOLS
 
-ModelFactory = Callable[[str, float], BaseChatModel]
+ModelFactory = Callable[..., BaseChatModel]
 
-_MAX_MODEL_CALLS_PER_RUN = 4
+# Medido: un miembro con tools usa 1-2 rondas de tools más 1-2 intentos de schema; con 4 fallaba ~25% de las veces.
+_MAX_MODEL_CALLS_PER_RUN = 6
+# Exa cobra un precio fijo por request (unos 0,007 USD); la búsqueda nativa del proveedor varía por modelo.
+_WEB_SEARCH_PLUGIN = {"id": "web", "engine": "exa", "max_results": 5}
 
 
 class CostTracker(AsyncCallbackHandler):
@@ -40,7 +43,11 @@ def openrouter_model_factory(settings: Settings) -> ModelFactory:
     if settings.openrouter_api_key is None:
         raise RuntimeError("Falta OPENROUTER_API_KEY en el entorno.")
 
-    def make(model: str, temperature: float) -> BaseChatModel:
+    def make(model: str, temperature: float, web_search: bool = False) -> BaseChatModel:
+        # Sin esto OpenRouter puede rutear a un proveedor lento; la latencia del mismo modelo variaba 16-130 s.
+        extra_body: dict[str, Any] = {"provider": {"sort": "throughput"}}
+        if web_search:
+            extra_body["plugins"] = [_WEB_SEARCH_PLUGIN]
         # OpenRouter expone Chat Completions, no la Responses API de OpenAI.
         return init_chat_model(
             f"openai:{model}",
@@ -52,8 +59,7 @@ def openrouter_model_factory(settings: Settings) -> ModelFactory:
             max_retries=2,
             # Sin tope OpenRouter reserva crédito para el máximo del modelo (p. ej. 65k tokens) y responde 402 con saldo bajo.
             max_tokens=settings.council_max_output_tokens,
-            # Sin esto OpenRouter puede rutear a un proveedor lento; la latencia del mismo modelo variaba 16-130 s.
-            extra_body={"provider": {"sort": "throughput"}},
+            extra_body=extra_body,
         )
 
     return make
@@ -78,8 +84,10 @@ def _build_agent(
     # ToolStrategy reintenta los errores de schema sin contador; el tope evita que un modelo que nunca cumple repita hasta el timeout.
     call_limit = ModelCallLimitMiddleware(run_limit=_MAX_MODEL_CALLS_PER_RUN, exit_behavior="error")
     # checkpointer=True guarda la memoria del agente en el hilo de la sesión, bajo su propio namespace.
+    # Solo los miembros pueden buscar en la web; el supervisor sintetiza lo que ellos encontraron.
+    web_search = isinstance(cfg, MemberConfig) and cfg.web_search
     return create_agent(
-        make_model(cfg.model, cfg.temperature),
+        make_model(cfg.model, cfg.temperature, web_search=web_search),
         tools=tools,
         system_prompt=system_prompt,
         response_format=ToolStrategy(schema) if cfg.structured_output == "tool" else ProviderStrategy(schema),

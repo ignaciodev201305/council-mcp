@@ -40,9 +40,19 @@ class CouncilConfigTest(unittest.TestCase):
 
     def test_structured_output_mode(self):
         config = load_council_config(ROOT / "council.yaml")
-        self.assertEqual(config.supervisor.structured_output, "native")
-        self.assertEqual(config.members[0].structured_output, "tool")
+        self.assertEqual(config.supervisor.structured_output, "tool")
+        native = {**_BASE["supervisor"], "structured_output": "native"}
+        self.assertEqual(CouncilConfig.model_validate(_with(supervisor=native)).supervisor.structured_output, "native")
+        modes = {m.name: m.structured_output for m in config.members}
+        self.assertEqual(modes, {"tecnico": "native", "producto": "tool", "riesgos": "tool", "constructor": "native"})
         member = {**_BASE["members"][0], "structured_output": "json"}
+        with self.assertRaises(ValidationError):
+            CouncilConfig.model_validate(_with(members=[member]))
+
+    def test_web_search_flag(self):
+        config = load_council_config(ROOT / "council.yaml")
+        self.assertEqual([m.name for m in config.members if m.web_search], ["producto"])
+        member = {**_BASE["members"][0], "web_search": "quizas"}
         with self.assertRaises(ValidationError):
             CouncilConfig.model_validate(_with(members=[member]))
 

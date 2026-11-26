@@ -30,6 +30,8 @@ class MemberConfig(AgentConfig):
 
     name: str = Field(pattern=r"^[a-z][a-z0-9_]{1,31}$")
     tools: list[ToolName] = Field(default_factory=list)
+    # Activa la búsqueda web integrada de OpenRouter; tiene costo extra por request.
+    web_search: bool = False
 
 
 class CouncilConfig(BaseModel):
@@ -93,12 +95,21 @@ class CouncilReport(BaseModel):
     strengths: list[str] = Field(min_length=1)
     weaknesses: list[str] = Field(min_length=1)
     key_improvements: list[str] = Field(description="Cambios más importantes, en orden de prioridad.")
+    # Sin mínimo ni máximo: obligar a uno producía checks de relleno, y con salida nativa no hay reintento.
     checks_for_coding_agent: list[str] = Field(
-        # Sin max_length: con salida nativa no hay reintento, y un sexto check tumbaría la síntesis entera.
-        min_length=1,
-        description="De 1 a 5 verificaciones, cada una ligada a una debilidad o pregunta concreta de esta idea.",
+        default_factory=list,
+        description="De 0 a 5 verificaciones, cada una ligada a una debilidad o pregunta concreta de esta idea.",
     )
     open_questions: list[str] = Field(default_factory=list, description="Preguntas que más cambiarían el veredicto.")
+
+
+class KeyFinding(BaseModel):
+    """Hallazgo de severidad alta de un miembro, copiado tal cual sin pasar por la síntesis."""
+
+    member: str
+    kind: Literal["weakness", "risk"]
+    text: str
+    basis: Basis
 
 
 class ConsultResult(BaseModel):
@@ -106,6 +117,9 @@ class ConsultResult(BaseModel):
 
     session_id: str
     report: CouncilReport
+    key_findings: list[KeyFinding] = Field(
+        default_factory=list, description="Hallazgos de severidad alta de cada miembro, sin resumir."
+    )
     members_responded: list[str]
     members_failed: list[str]
     cost_usd: float = Field(description="Costo de esta consulta en dólares, según OpenRouter.")

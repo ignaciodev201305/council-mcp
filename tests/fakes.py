@@ -86,9 +86,12 @@ class FakeTextModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=reply))])
 
 
-def fake_config(failing: set[str] | None = None, quorum: int = 3) -> tuple[CouncilConfig, dict[str, FakeToolModel], Callable[[str, float], FakeToolModel]]:
+def fake_config(
+    failing: set[str] | None = None, quorum: int = 3, web_search: set[str] | None = None
+) -> tuple[CouncilConfig, dict[str, FakeToolModel], Callable[..., FakeToolModel]]:
     """Devuelve una configuración de 4 miembros, sus modelos falsos y la factory que los entrega."""
     failing = failing or set()
+    web_search = web_search or set()
     names = ["tecnico", "producto", "riesgos", "constructor"]
     config = CouncilConfig.model_validate(
         {
@@ -97,7 +100,8 @@ def fake_config(failing: set[str] | None = None, quorum: int = 3) -> tuple[Counc
             "summarizer_model": "fake/summarizer",
             "supervisor": {"model": "fake/supervisor", "prompt": "prompts/supervisor.md"},
             "members": [
-                {"name": n, "model": f"fake/{n}", "prompt": f"prompts/members/{n}.md"} for n in names
+                {"name": n, "model": f"fake/{n}", "prompt": f"prompts/members/{n}.md", "web_search": n in web_search}
+                for n in names
             ],
         }
     )
@@ -105,7 +109,10 @@ def fake_config(failing: set[str] | None = None, quorum: int = 3) -> tuple[Counc
     models["fake/supervisor"] = FakeToolModel(tool_name="CouncilReport", payload=REPORT)
     models["fake/summarizer"] = FakeToolModel(tool_name="none", payload={})
 
-    def make(model: str, temperature: float) -> FakeToolModel:
+    def make(model: str, temperature: float, web_search: bool = False) -> FakeToolModel:
+        if web_search:
+            make.web_search_models.append(model)
         return models[model]
 
+    make.web_search_models = []
     return config, models, make

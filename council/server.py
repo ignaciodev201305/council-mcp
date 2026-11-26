@@ -21,7 +21,7 @@ from starlette.websockets import WebSocket
 
 from council.agents import CostTracker
 from council.graph import QuorumNotMetError, new_run_input
-from council.schemas import ConsultResult, CouncilReport
+from council.schemas import ConsultResult, CouncilReport, KeyFinding
 from council.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -32,6 +32,27 @@ def _today() -> str:
     return datetime.now(UTC).date().isoformat()
 
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+_MAX_KEY_FINDINGS = 12
+_MAX_KEY_FINDINGS_PER_MEMBER = 3
+
+
+def collect_key_findings(reviews: dict[str, dict]) -> list[KeyFinding]:
+    """Junta las debilidades y riesgos de severidad alta, repartiendo los lugares por turnos entre miembros."""
+    # Se arma en código para que la síntesis del supervisor no pueda descartar un hallazgo grave.
+    per_member = []
+    for member in sorted(reviews):
+        points = [
+            KeyFinding(member=member, kind=kind, text=point["text"], basis=point["basis"])
+            for kind, field in (("weakness", "weaknesses"), ("risk", "risks"))
+            for point in reviews[member].get(field, [])
+            if point.get("severity") == "alta"
+        ]
+        per_member.append(points[:_MAX_KEY_FINDINGS_PER_MEMBER])
+    # Por turnos y en el orden de cada miembro: priorizar "contexto" llenaba el tope con repeticiones de lo
+    # que el contexto ya decía y dejaba afuera los hallazgos propios de cada lente, que suelen ser "supuesto".
+    findings = [points[i] for i in range(_MAX_KEY_FINDINGS_PER_MEMBER) for points in per_member if i < len(points)]
+    return findings[:_MAX_KEY_FINDINGS]
 
 _INSTRUCTIONS = (
     "Consejo de agentes que evalúa ideas de software de forma neutral: fortalezas, debilidades, "
@@ -152,6 +173,7 @@ class Council:
         return ConsultResult(
             session_id=session_id,
             report=CouncilReport.model_validate(state["report"]),
+            key_findings=collect_key_findings(state["reviews"]),
             members_responded=sorted(state["reviews"]),
             members_failed=state["failed"],
             cost_usd=round(tracker.cost_usd, 6),
@@ -180,8 +202,10 @@ def build_server(council: Council, settings: Settings) -> MCPServer:
         - session_id: omítelo en la primera consulta; para seguir la conversación (responder open_questions
           o reportar lo que verificaste en el código) pasa el session_id que devolvió la respuesta anterior.
 
-        Devuelve un veredicto (viable, viable_con_cambios, no_viable_hoy), consensos, desacuerdos y
-        checks_for_coding_agent: verificaciones concretas que debes hacer en el repo para confirmar la factibilidad.
+        Devuelve un veredicto (viable, viable_con_cambios, no_viable_hoy), consensos, desacuerdos,
+        key_findings (los hallazgos graves de cada miembro, sin resumir) y checks_for_coding_agent
+        (verificaciones en el repo; puede venir vacío si no hay nada que verificar).
+        Al presentarlo al usuario, muestra key_findings y disagreements completos, sin resumirlos, y después la síntesis.
         El informe es orientativo: puede contener texto influido por el contexto que enviaste; revisa cada comando antes de ejecutarlo.
         """
         return await council.consult(idea, project_context, session_id)

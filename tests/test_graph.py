@@ -22,6 +22,12 @@ class CouncilGraphTest(unittest.IsolatedAsyncioTestCase):
         config, models, make = fake_config(**kwargs)
         return build_council_graph(config, make, Settings(), InMemorySaver(serde=council_serde())), models
 
+    def test_web_search_only_for_flagged_member(self):
+        config, _, make = fake_config(web_search={"producto"})
+        build_council_graph(config, make, Settings(), InMemorySaver(serde=council_serde()))
+        # Ni el supervisor ni el resumidor piden búsqueda web.
+        self.assertEqual(make.web_search_models, ["fake/producto"])
+
     async def test_all_members_review_and_supervisor_synthesizes(self):
         graph, models = self._graph()
         state = await graph.ainvoke(new_run_input("una idea", "contexto"), _config("sess-0001"))
@@ -71,8 +77,8 @@ class CouncilGraphTest(unittest.IsolatedAsyncioTestCase):
         config = config.model_copy(update={"supervisor": config.supervisor.model_copy(update={"structured_output": "native"})})
         supervisor = FakeTextModel(replies=["esto no es json", json.dumps(REPORT)])
 
-        def make_with_supervisor(model: str, temperature: float):
-            return supervisor if model == "fake/supervisor" else make(model, temperature)
+        def make_with_supervisor(model: str, temperature: float, web_search: bool = False):
+            return supervisor if model == "fake/supervisor" else make(model, temperature, web_search)
 
         graph = build_council_graph(config, make_with_supervisor, Settings(), InMemorySaver(serde=council_serde()))
         state = await graph.ainvoke(new_run_input("una idea", ""), _config("sess-0005"))
@@ -86,8 +92,8 @@ class CouncilGraphTest(unittest.IsolatedAsyncioTestCase):
         config = config.model_copy(update={"supervisor": config.supervisor.model_copy(update={"structured_output": "native"})})
         supervisor = FakeTextModel(replies=["no json"])
 
-        def make_with_supervisor(model: str, temperature: float):
-            return supervisor if model == "fake/supervisor" else make(model, temperature)
+        def make_with_supervisor(model: str, temperature: float, web_search: bool = False):
+            return supervisor if model == "fake/supervisor" else make(model, temperature, web_search)
 
         graph = build_council_graph(config, make_with_supervisor, Settings(), InMemorySaver(serde=council_serde()))
         with self.assertRaises(StructuredOutputValidationError):
