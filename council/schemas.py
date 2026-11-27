@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-ToolName = Literal["package_info"]
+ToolName = Literal["package_info", "known_vulnerabilities"]
 Feasibility = Literal["alta", "media", "baja"]
 Verdict = Literal["viable", "viable_con_cambios", "no_viable_hoy"]
 Severity = Literal["alta", "media", "baja"]

@@ -92,7 +92,7 @@ Todo el comportamiento vive en `council.yaml` y `prompts/`; no hace falta tocar 
 | `members[].model` / `supervisor.model` | ID del modelo en [OpenRouter](https://openrouter.ai/models) |
 | `temperature` | Temperatura del modelo (0 a 2) |
 | `prompt` | Ruta al `.md` con la lente (dentro de `prompts/`) |
-| `tools` | Tools del miembro; por ahora solo `package_info` |
+| `tools` | Tools del miembro: `package_info` y `known_vulnerabilities` |
 | `web_search` | `true` activa la búsqueda web integrada de OpenRouter (motor Exa, unos 0,007 USD por llamada). Por defecto la tiene solo `producto`, para encontrar competidores y alternativas reales |
 | `structured_output` | `tool` (default: reintenta si la salida no valida) o `native` (salida estructurada del proveedor; necesaria para modelos que rechazan `tool_choice` forzado, como Claude Sonnet 5.5) |
 | `member_base_prompt` | Prompt común a todos los miembros |
@@ -105,6 +105,10 @@ Todo el comportamiento vive en `council.yaml` y `prompts/`; no hace falta tocar 
 ### Tool `package_info`
 
 Consulta PyPI o npm: si el paquete existe, su última versión, la fecha y la licencia. Sirve para que el consejo no dé por buena una librería inventada o abandonada. Solo habla con `pypi.org` y `registry.npmjs.org`.
+
+### Tool `known_vulnerabilities`
+
+Consulta [OSV](https://osv.dev) para saber si un paquete de PyPI o npm tiene vulnerabilidades conocidas, en general o en una versión. Dice cuántas hay, cuántas siguen sin versión corregida y resume las más recientes. Por defecto la tiene `riesgos`. Solo habla con `api.osv.dev`; no necesita clave ni cuesta nada.
 
 ## Memoria y sesiones
 

@@ -36,7 +36,8 @@ members:
     model: deepseek/deepseek-v4.1-flash-1017
     temperature: 0.3
     prompt: prompts/members/riesgos.md
-    tools: [package_info]
+    # known_vulnerabilities consulta OSV; es gratis y no usa un LLM.
+    tools: [package_info, known_vulnerabilities]
 
   - name: constructor
     model: anthropic/claude-haiku-5.5
