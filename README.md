@@ -67,7 +67,7 @@ Cualquier otro cliente MCP con soporte HTTP se conecta igual: URL más header.
 | `consult_council` | `idea` (obligatorio), `project_context`, `session_id` | `session_id`, `report`, `key_findings`, `members_responded`, `members_failed`, `cost_usd` |
 
 - Primera consulta: sin `session_id`. La respuesta trae uno nuevo.
-- Seguimiento: el mismo `session_id` más la información nueva en `idea` (respuestas a `open_questions`, o lo que encontraste en el código). Cada miembro recuerda su evaluación anterior y dice qué cambió.
+- Seguimiento: el mismo `session_id` más la información nueva en `idea` (respuestas a `open_questions`, o lo que encontraste en el código). Cada miembro recibe la idea original y sus evaluaciones anteriores tal cual, y dice qué cambió.
 - Un `session_id` desconocido o expirado devuelve error: reenvía la idea completa sin `session_id` para empezar una nueva.
 - `report.verdict`: `viable`, `viable_con_cambios` o `no_viable_hoy`.
 - `report.checks_for_coding_agent`: verificaciones concretas para hacer en el repo. Puede venir vacío si la idea no tiene código que revisar.
@@ -94,15 +94,13 @@ Todo el comportamiento vive en `council.yaml` y `prompts/`; no hace falta tocar 
 | `prompt` | Ruta al `.md` con la lente (dentro de `prompts/`) |
 | `tools` | Tools del miembro; por ahora solo `package_info` |
 | `web_search` | `true` activa la búsqueda web integrada de OpenRouter (motor Exa, unos 0,007 USD por llamada). Por defecto la tiene solo `producto`, para encontrar competidores y alternativas reales |
-| `memory_window` | Mensajes recientes que se conservan sin resumir (mínimo 2) |
 | `structured_output` | `tool` (default: reintenta si la salida no valida) o `native` (salida estructurada del proveedor; necesaria para modelos que rechazan `tool_choice` forzado, como Claude Sonnet 5.5) |
 | `member_base_prompt` | Prompt común a todos los miembros |
 | `quorum` | Mínimo de miembros que deben responder |
-| `summarizer_model` | Modelo barato que resume la memoria |
 
 - Para agregar un miembro, suma una entrada en `members` y su `.md` en `prompts/members/` (máximo 8).
 - Conviene que cada miembro use una familia de modelos distinta para que sus sesgos no se parezcan.
-- La configuración se valida al arrancar: un campo desconocido, una ventana menor a 2 o un prompt fuera de `prompts/` impiden levantar el server.
+- La configuración se valida al arrancar: un campo desconocido o un prompt fuera de `prompts/` impiden levantar el server.
 
 ### Tool `package_info`
 
@@ -110,8 +108,10 @@ Consulta PyPI o npm: si el paquete existe, su última versión, la fecha y la li
 
 ## Memoria y sesiones
 
-- Cada sesión es un hilo propio en `data/council.db` (SQLite). Cada agente guarda ahí su memoria, y las sesiones no se ven entre sí.
-- Cuando la conversación supera `COUNCIL_SUMMARY_TRIGGER_TOKENS`, lo viejo se resume y se conservan los últimos `memory_window` mensajes.
+- Cada sesión es un hilo propio en `data/council.db` (SQLite), y las sesiones no se ven entre sí.
+- La memoria es el estado de la sesión, no un chat: la idea original y, por cada una de las últimas `COUNCIL_HISTORY_TURNS` consultas, la información nueva, la evaluación de cada miembro y el reporte del supervisor, como JSON sin resumir.
+- En un seguimiento, cada miembro ve solo sus propias evaluaciones anteriores, nunca las de los otros; el supervisor ve sus reportes anteriores.
+- Todo llega a los modelos delimitado como datos, también la memoria. No hay resumidor ni llamadas extra.
 - Las sesiones sin uso por `COUNCIL_SESSION_TTL_DAYS` se borran al arrancar. Si se supera `COUNCIL_MAX_SESSIONS`, se descartan las más viejas.
 
 ## Variables de entorno
@@ -128,7 +128,7 @@ Consulta PyPI o npm: si el paquete existe, su última versión, la fecha y la li
 | `COUNCIL_MEMBER_TIMEOUT_S` | `180` | Tiempo máximo por miembro y para el supervisor |
 | `COUNCIL_MODEL_TIMEOUT_S` | `120` | Timeout de cada llamada al modelo |
 | `COUNCIL_MAX_OUTPUT_TOKENS` | `8000` | Tope de tokens de salida por llamada; sin él, OpenRouter reserva crédito para el máximo del modelo y rechaza con saldo bajo |
-| `COUNCIL_SUMMARY_TRIGGER_TOKENS` | `6000` | Tokens de memoria a partir de los cuales se resume |
+| `COUNCIL_HISTORY_TURNS` | `3` | Consultas anteriores de la sesión que se conservan en la memoria |
 | `COUNCIL_MAX_IDEA_CHARS` / `COUNCIL_MAX_CONTEXT_CHARS` | `8000` / `30000` | Topes de tamaño de la entrada |
 | `LANGSMITH_TRACING` / `LANGSMITH_API_KEY` / `LANGSMITH_AGENT_ID` / `LANGSMITH_AGENT_ENVIRONMENT` | (apagado) | Trazas en LangSmith |
 

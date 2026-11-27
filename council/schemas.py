@@ -19,8 +19,6 @@ class AgentConfig(BaseModel):
     model: str = Field(min_length=1, description="ID del modelo en OpenRouter.")
     temperature: float = Field(default=0.3, ge=0, le=2)
     prompt: str = Field(min_length=1, description="Ruta al prompt .md, relativa a la raíz del proyecto.")
-    # El mínimo de 2 garantiza que el último intercambio nunca se resuma.
-    memory_window: int = Field(default=2, ge=2, le=50)
     # "tool" reintenta si la salida no valida; "native" sirve a modelos que rechazan tool_choice forzado.
     structured_output: Literal["tool", "native"] = "tool"
 
@@ -41,7 +39,6 @@ class CouncilConfig(BaseModel):
 
     member_base_prompt: str = Field(min_length=1)
     quorum: int = Field(ge=1)
-    summarizer_model: str = Field(min_length=1)
     supervisor: AgentConfig
     members: list[MemberConfig] = Field(min_length=1, max_length=8)
 

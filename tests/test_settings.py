@@ -12,7 +12,6 @@ from council.settings import ROOT, Settings, _read_env_file, load_council_config
 _BASE = {
     "member_base_prompt": "prompts/members/_base.md",
     "quorum": 1,
-    "summarizer_model": "x/y",
     "supervisor": {"model": "x/y", "prompt": "prompts/supervisor.md"},
     "members": [{"name": "tecnico", "model": "x/y", "prompt": "prompts/members/tecnico.md"}],
 }
@@ -28,11 +27,6 @@ class CouncilConfigTest(unittest.TestCase):
         config = load_council_config(ROOT / "council.yaml")
         self.assertEqual(len(config.members), 4)
         self.assertLessEqual(config.quorum, len(config.members))
-
-    def test_rejects_memory_window_below_two(self):
-        member = {**_BASE["members"][0], "memory_window": 1}
-        with self.assertRaises(ValidationError):
-            CouncilConfig.model_validate(_with(members=[member]))
 
     def test_rejects_unknown_fields(self):
         with self.assertRaises(ValidationError):
@@ -91,6 +85,11 @@ class SettingsTest(unittest.TestCase):
         self.assertEqual(Settings().council_max_output_tokens, 8000)
         with self.assertRaises(ValidationError):
             Settings(council_max_output_tokens=500)
+
+    def test_history_turns_default_and_minimum(self):
+        self.assertEqual(Settings().council_history_turns, 3)
+        with self.assertRaises(ValidationError):
+            Settings(council_history_turns=0)
 
 
 if __name__ == "__main__":

@@ -8,14 +8,10 @@ member_base_prompt: prompts/members/_base.md
 # Mínimo de miembros que deben responder para sintetizar.
 quorum: 3
 
-# Modelo barato que resume la memoria de cada agente cuando la conversación crece.
-summarizer_model: anthropic/claude-haiku-5.5
-
 supervisor:
   model: openai/gpt-6-luna
   temperature: 0.2
   prompt: prompts/supervisor.md
-  memory_window: 4   # mensajes recientes que se conservan sin resumir (mínimo 2)
   # "tool" reintenta si el reporte no valida; con "native" un reporte inválido tumbaba la consulta con Luna.
   structured_output: tool
 
@@ -25,7 +21,6 @@ members:
     temperature: 0.3
     prompt: prompts/members/tecnico.md
     tools: [package_info]
-    memory_window: 2
     # Haiku a veces arma mal los argumentos del tool de salida (listas como texto); la salida nativa lo evita.
     structured_output: native
 
@@ -34,7 +29,6 @@ members:
     temperature: 0.5
     prompt: prompts/members/producto.md
     tools: []
-    memory_window: 2
     # Busca competidores y alternativas actuales en la web (unos 0,007 USD más por llamada).
     web_search: true
 
@@ -43,12 +37,10 @@ members:
     temperature: 0.3
     prompt: prompts/members/riesgos.md
     tools: [package_info]
-    memory_window: 2
 
   - name: constructor
     model: anthropic/claude-haiku-5.5
     temperature: 0.6
     prompt: prompts/members/constructor.md
     tools: []
-    memory_window: 2
     structured_output: native

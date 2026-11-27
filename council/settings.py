@@ -30,7 +30,7 @@ class Settings(BaseModel):
     council_member_timeout_s: float = 180
     council_model_timeout_s: float = 120
     council_max_output_tokens: int = Field(default=8000, ge=1000)
-    council_summary_trigger_tokens: int = 6000
+    council_history_turns: int = Field(default=3, ge=1)
     council_max_idea_chars: int = 8000
     council_max_context_chars: int = 30000
 

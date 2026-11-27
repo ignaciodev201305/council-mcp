@@ -4,7 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import ModelCallLimitMiddleware, SummarizationMiddleware
+from langchain.agents.middleware import ModelCallLimitMiddleware
 from langchain.agents.structured_output import ProviderStrategy, ToolStrategy
 from langchain.chat_models import init_chat_model
 from langchain_core.callbacks import AsyncCallbackHandler
@@ -71,19 +71,12 @@ def _build_agent(
     system_prompt: str,
     tools: list,
     schema: type,
-    config: CouncilConfig,
     make_model: ModelFactory,
-    settings: Settings,
 ) -> CompiledStateGraph:
-    """Crea un agente con salida estructurada y memoria resumida."""
-    summarizer = SummarizationMiddleware(
-        make_model(config.summarizer_model, 0.0),
-        trigger=("tokens", settings.council_summary_trigger_tokens),
-        keep=("messages", cfg.memory_window),
-    )
+    """Crea un agente con salida estructurada y sin memoria propia."""
     # ToolStrategy reintenta los errores de schema sin contador; el tope evita que un modelo que nunca cumple repita hasta el timeout.
     call_limit = ModelCallLimitMiddleware(run_limit=_MAX_MODEL_CALLS_PER_RUN, exit_behavior="error")
-    # checkpointer=True guarda la memoria del agente en el hilo de la sesión, bajo su propio namespace.
+    # Sin checkpointer propio cada ejecución arranca vacía; la memoria de la sesión vive en el estado del grafo.
     # Solo los miembros pueden buscar en la web; el supervisor sintetiza lo que ellos encontraron.
     web_search = isinstance(cfg, MemberConfig) and cfg.web_search
     return create_agent(
@@ -91,22 +84,19 @@ def _build_agent(
         tools=tools,
         system_prompt=system_prompt,
         response_format=ToolStrategy(schema) if cfg.structured_output == "tool" else ProviderStrategy(schema),
-        middleware=[summarizer, call_limit],
-        checkpointer=True,
+        middleware=[call_limit],
         name=name,
     )
 
 
-def build_member(
-    member: MemberConfig, config: CouncilConfig, make_model: ModelFactory, settings: Settings
-) -> CompiledStateGraph:
+def build_member(member: MemberConfig, config: CouncilConfig, make_model: ModelFactory) -> CompiledStateGraph:
     """Crea el agente de un miembro con su lente y sus tools."""
     prompt = f"{read_prompt(config.member_base_prompt)}\n\n{read_prompt(member.prompt)}"
     tools = [TOOLS[t] for t in member.tools]
-    return _build_agent(member.name, member, prompt, tools, MemberReview, config, make_model, settings)
+    return _build_agent(member.name, member, prompt, tools, MemberReview, make_model)
 
 
-def build_supervisor(config: CouncilConfig, make_model: ModelFactory, settings: Settings) -> CompiledStateGraph:
+def build_supervisor(config: CouncilConfig, make_model: ModelFactory) -> CompiledStateGraph:
     """Crea el agente supervisor que sintetiza las evaluaciones."""
     prompt = read_prompt(config.supervisor.prompt)
-    return _build_agent("supervisor", config.supervisor, prompt, [], CouncilReport, config, make_model, settings)
+    return _build_agent("supervisor", config.supervisor, prompt, [], CouncilReport, make_model)

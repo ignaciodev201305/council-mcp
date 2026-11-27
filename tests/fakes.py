@@ -97,7 +97,6 @@ def fake_config(
         {
             "member_base_prompt": "prompts/members/_base.md",
             "quorum": quorum,
-            "summarizer_model": "fake/summarizer",
             "supervisor": {"model": "fake/supervisor", "prompt": "prompts/supervisor.md"},
             "members": [
                 {"name": n, "model": f"fake/{n}", "prompt": f"prompts/members/{n}.md", "web_search": n in web_search}
@@ -107,7 +106,6 @@ def fake_config(
     )
     models = {f"fake/{n}": FakeToolModel(tool_name="MemberReview", payload=REVIEW, fail=n in failing) for n in names}
     models["fake/supervisor"] = FakeToolModel(tool_name="CouncilReport", payload=REPORT)
-    models["fake/summarizer"] = FakeToolModel(tool_name="none", payload={})
 
     def make(model: str, temperature: float, web_search: bool = False) -> FakeToolModel:
         if web_search:
