@@ -64,8 +64,10 @@ class _StubGraph:
         self.active: dict[str, int] = {}
         self.max_per_session = 0
         self.max_total = 0
+        self.calls = 0
 
     async def ainvoke(self, payload: dict, config: dict) -> dict:
+        self.calls += 1
         # Simula una llamada al modelo que cuesta USD 0.01, como la informaría OpenRouter.
         message = AIMessage(content="", response_metadata={"token_usage": {"cost": 0.01}})
         for callback in config.get("callbacks", []):
@@ -94,6 +96,11 @@ class CouncilTest(unittest.IsolatedAsyncioTestCase):
         await council.setup()
         return council
 
+    async def _register(self, council: Council, *session_ids: str) -> None:
+        """Registra sesiones con id conocido, como si ya hubieran tenido una consulta."""
+        for session_id in session_ids:
+            await council._touch(session_id)
+
     async def test_new_session_id_is_generated_and_reusable(self):
         council = await self._council()
         result = await council.consult("idea", "", None)
@@ -109,22 +116,40 @@ class CouncilTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_same_session_runs_one_at_a_time(self):
         council = await self._council(council_max_concurrent=4)
+        await self._register(council, "sesion-unica")
         await asyncio.gather(*(council.consult("idea", "", "sesion-unica") for _ in range(3)))
         self.assertEqual(self.graph.max_per_session, 1)
 
     async def test_global_concurrency_is_limited(self):
         council = await self._council(council_max_concurrent=2)
+        await self._register(council, *(f"sesion-{i:04d}" for i in range(5)))
         await asyncio.gather(*(council.consult("idea", "", f"sesion-{i:04d}") for i in range(5)))
         self.assertEqual(self.graph.max_total, 2)
 
     async def test_oldest_sessions_are_evicted(self):
         council = await self._council(council_max_sessions=2)
-        for i in range(3):
-            await council.consult("idea", "", f"sesion-{i:04d}")
+        await self._register(council, *(f"sesion-{i:04d}" for i in range(3)))
         async with self.conn.execute("SELECT session_id FROM council_sessions ORDER BY session_id") as cursor:
             rows = [r[0] for r in await cursor.fetchall()]
         self.assertEqual(rows, ["sesion-0001", "sesion-0002"])
 
+    async def test_unknown_session_id_is_rejected_without_running_graph(self):
+        council = await self._council()
+        with self.assertRaises(ToolError) as ctx:
+            await council.consult("seguimiento", "", "sesion-nunca-vista")
+        self.assertIn("Sesión desconocida o expirada", str(ctx.exception))
+        self.assertEqual(self.graph.calls, 0)
+        self.assertEqual(await council.spent_today(), 0.0)
+
+    async def test_evicted_session_cannot_be_reused(self):
+        council = await self._council(council_max_sessions=2)
+        first = (await council.consult("idea", "", None)).session_id
+        await council.consult("idea", "", None)
+        await council.consult("idea", "", None)
+        calls = self.graph.calls
+        with self.assertRaises(ToolError):
+            await council.consult("seguimiento", "", first)
+        self.assertEqual(self.graph.calls, calls)
 
     async def test_cost_is_reported_and_accumulated(self):
         council = await self._council()

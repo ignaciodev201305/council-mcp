@@ -95,12 +95,16 @@ class Council:
             )
             await self._saver.conn.commit()
 
+    async def _session_exists(self, session_id: str) -> bool:
+        """Indica si la sesión está registrada."""
+        query = "SELECT 1 FROM council_sessions WHERE session_id = ?"
+        async with self._saver.conn.execute(query, (session_id,)) as cursor:
+            return await cursor.fetchone() is not None
+
     async def _touch(self, session_id: str) -> None:
         """Registra el uso de la sesión y, si es nueva y no hay lugar, descarta las más viejas."""
         conn = self._saver.conn
-        async with conn.execute("SELECT 1 FROM council_sessions WHERE session_id = ?", (session_id,)) as cursor:
-            exists = await cursor.fetchone() is not None
-        if not exists:
+        if not await self._session_exists(session_id):
             async with conn.execute("SELECT COUNT(*) FROM council_sessions") as cursor:
                 (count,) = await cursor.fetchone()
             overflow = count - self._settings.council_max_sessions + 1
@@ -135,6 +139,7 @@ class Council:
 
     async def consult(self, idea: str, project_context: str, session_id: str | None) -> ConsultResult:
         """Corre una consulta al consejo dentro de la sesión indicada o de una nueva."""
+        is_followup = session_id is not None
         if session_id is None:
             session_id = secrets.token_urlsafe(16)
         elif not SESSION_ID_PATTERN.fullmatch(session_id):
@@ -144,6 +149,11 @@ class Council:
             lock = self._locks[session_id] = asyncio.Lock()
         # Primero el lock de sesión, para que esperar a la propia sesión no ocupe un cupo global.
         async with lock, self._semaphore:
+            # Un seguimiento sin memoria se evaluaría como si fuera la idea completa.
+            if is_followup and not await self._session_exists(session_id):
+                raise ToolError(
+                    "Sesión desconocida o expirada: reenvía la idea completa sin session_id para empezar una nueva."
+                )
             # Las consultas en curso pueden pasar el tope por el costo de una consulta cada una, como máximo.
             spent = await self.spent_today()
             budget = self._settings.council_daily_budget_usd
@@ -201,6 +211,7 @@ def build_server(council: Council, settings: Settings) -> MCPServer:
             Qué se quiere decidir: la pregunta concreta que el consejo debe ayudar a responder.
         - session_id: omítelo en la primera consulta; para seguir la conversación (responder open_questions
           o reportar lo que verificaste en el código) pasa el session_id que devolvió la respuesta anterior.
+          Un session_id desconocido o expirado devuelve error: reenvía la idea completa sin session_id.
 
         Devuelve un veredicto (viable, viable_con_cambios, no_viable_hoy), consensos, desacuerdos,
         key_findings (los hallazgos graves de cada miembro, sin resumir) y checks_for_coding_agent

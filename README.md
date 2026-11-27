@@ -68,6 +68,7 @@ Cualquier otro cliente MCP con soporte HTTP se conecta igual: URL más header.
 
 - Primera consulta: sin `session_id`. La respuesta trae uno nuevo.
 - Seguimiento: el mismo `session_id` más la información nueva en `idea` (respuestas a `open_questions`, o lo que encontraste en el código). Cada miembro recuerda su evaluación anterior y dice qué cambió.
+- Un `session_id` desconocido o expirado devuelve error: reenvía la idea completa sin `session_id` para empezar una nueva.
 - `report.verdict`: `viable`, `viable_con_cambios` o `no_viable_hoy`.
 - `report.checks_for_coding_agent`: verificaciones concretas para hacer en el repo. Puede venir vacío si la idea no tiene código que revisar.
 - `key_findings`: las debilidades y riesgos de severidad alta de cada miembro, copiados tal cual en código, sin pasar por la síntesis (como máximo 12, repartidos por turnos entre miembros, hasta 3 por miembro). Así ningún hallazgo grave se pierde al resumir.
